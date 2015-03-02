@@ -1,0 +1,6 @@
+[Unit]
+Description=my socket test
+
+[Service]
+Type=forking
+ExecStart=/home/wangqingze/mydir/code/cCode/socket/server
