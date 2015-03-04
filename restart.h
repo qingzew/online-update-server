@@ -11,6 +11,7 @@ class CRestart {
         CRestart();
         CRestart(char *argPath, char *argCmd, char *argArgs);
         ~CRestart();
+
         void SetPath(char *argPath);
         char *GetPath();
         void SetCmd(char *argCmd);
@@ -18,9 +19,9 @@ class CRestart {
         void SetArgs(char *argArgs);
         char *GetArgs();
 
-        void Handler(int sig);
 //        void SetSignal();
     private:
+        void Handler(int sig);
         char *path;
         char *cmd;
         char *args;

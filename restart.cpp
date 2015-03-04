@@ -75,6 +75,13 @@ int main (int argc, char **argv) {
     std::cout<<cr.GetCmd()<<std::endl;
     std::cout<<cr.GetArgs()<<std::endl;
 
+    struct sigaction action;
+    action.sa_handler = cr.Handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+//    action.sa_flags |= SA_RESTART;
+
+    sigaction(SIGALRM, &action, NULL);
 
     return 0;
 }
