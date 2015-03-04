@@ -57,15 +57,24 @@ void CRestart::Handler(int sig) {
     }
 }
 
-//void CRestart::SetSignal() {
-//    struct sigaction action;
-//    action.sa_handler = &Handler;
-//    sigemptyset(&action.sa_mask);
-//    action.sa_flags = 0;
-////    action.sa_flags |= SA_RESTART;
-//
-//    sigaction(SIGALRM, &action, NULL);
-//}
+
+void CRestart::SetSignal() {
+    struct sigaction action;
+
+    boost::function<void (int)> handlerFunc;
+    handlerFunc = boost::bind(&CRestart::Handler, this);
+
+    action.sa_handler = handlerFunc;
+//    typedef void (*func)(int);
+//    func f;
+//    f = &CRestart::Handler;
+//    action.sa_handler = &CRestart::Handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+//    action.sa_flags |= SA_RESTART;
+
+    sigaction(SIGALRM, &action, NULL);
+}
 
 
 int main (int argc, char **argv) {
@@ -75,13 +84,7 @@ int main (int argc, char **argv) {
     std::cout<<cr.GetCmd()<<std::endl;
     std::cout<<cr.GetArgs()<<std::endl;
 
-    struct sigaction action;
-    action.sa_handler = cr.Handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-//    action.sa_flags |= SA_RESTART;
 
-    sigaction(SIGALRM, &action, NULL);
 
     return 0;
 }
