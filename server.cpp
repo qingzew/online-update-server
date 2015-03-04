@@ -1,5 +1,7 @@
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -7,14 +9,37 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <string.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
+#include <signal.h>
 #include <fstream>
 #include <ctime>
 #include <iostream>
+#include <boost/thread.hpp>
+#include <boost/bind.hpp>
 
+#include "restart.h"
 
 #define MAXLINE 4096
+
+//void handler(int sig) {
+//    std::cout<<"hello"<<std::endl;
+//}
+
+void Child(int sockFd) {
+    char    buff[4096];
+    int     n;
+
+    n = recv(sockFd, buff, MAXLINE, 0);
+    buff[n] = '\0';
+
+    std::cout<<buff<<std::endl;
+
+    std::time_t result = std::time(0);
+
+    std::ofstream out("/tmp/output", std::ios::app);
+    out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
+    out.close();
+
+}
 
 int main(int argc, char const* argv[])
 {
@@ -56,14 +81,18 @@ int main(int argc, char const* argv[])
     //main process
     int    listenfd, connfd;
     struct sockaddr_in     servaddr;
-    char    buff[4096];
-    int     n;
 
     if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
         printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
         exit(0);
     }
 
+//    timeval timeout = {1, 0};
+//    if (setsockopt(listenfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeval)) < 0)
+//    {
+//        exit(1);
+//    }
+//
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -79,22 +108,27 @@ int main(int argc, char const* argv[])
         exit(0);
     }
 
+//    struct sigaction action;
+//    action.sa_handler = handler;
+//    sigemptyset(&action.sa_mask);
+//    action.sa_flags = 0;
+//    action.sa_flags |= SA_RESTART;
+//
+//    sigaction(SIGALRM, &action, NULL);
+//
+//    alarm(3);
+
     printf("======waiting for client's request======\n");
     while(1){
-        if( (connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-            printf("accept socket error: %s(errno: %d)",strerror(errno),errno);
-            continue;
+        if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+            if (errno == EINTR) {
+                std::cout<<strerror(errno)<<" : "<<errno;
+                break;
+            }
         }
-        n = recv(connfd, buff, MAXLINE, 0);
-        buff[n] = '\0';
-//        printf("recv msg from client: %s\n", buff);
 
-        std::time_t result = std::time(0);
-
-        std::ofstream out("/tmp/output", std::ios::app);
-        out<<buff<<" "<<std::asctime(std::localtime(&result));
-        out.close();
-
+        boost::thread thrd(boost::bind(&Child, connfd));
+        thrd.join();
         close(connfd);
     }
 
