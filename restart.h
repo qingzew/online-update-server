@@ -19,7 +19,7 @@ class CRestart {
         char *GetArgs();
 
         void Handler(int sig);
-        void SetSignal();
+//        void SetSignal();
     private:
         char *path;
         char *cmd;
