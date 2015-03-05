@@ -21,6 +21,7 @@
 char *path = NULL;
 char *cmd = NULL;
 char *args = NULL;
+
 int listenfd, connfd;
 
 void Handler(int sig) {
@@ -95,7 +96,16 @@ int main(int argc, char const* argv[])
 
     path = const_cast<char *>(argv[0]);
     cmd = const_cast<char *>(argv[0]);
-    args = argv[1];
+
+    struct sigaction action;
+    action.sa_handler = Handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    //    action.sa_flags |= SA_RESTART;
+
+    sigaction(SIGALRM, &action, NULL);
+
+    //    alarm(3);
 
     if (argc == 1) {
         struct sockaddr_in servaddr;
@@ -126,15 +136,6 @@ int main(int argc, char const* argv[])
             exit(0);
         }
 
-        struct sigaction action;
-        action.sa_handler = Handler;
-        sigemptyset(&action.sa_mask);
-        action.sa_flags = 0;
-        //    action.sa_flags |= SA_RESTART;
-
-        sigaction(SIGALRM, &action, NULL);
-
-        //    alarm(3);
 
         while(1){
             if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
@@ -150,8 +151,9 @@ int main(int argc, char const* argv[])
         }
 
     } else if (argc == 2) {
+        listenfd = atoi(argv[1]);
         while(1){
-            if((connfd = accept(atoi(args[1]), (struct sockaddr*)NULL, NULL)) == -1){
+            if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
                 if (errno == EINTR) {
                     std::cout<<strerror(errno)<<" : "<<errno;
                     break;
