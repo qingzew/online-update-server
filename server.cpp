@@ -18,11 +18,13 @@
 
 #define MAXLINE 4096
 
-const char *path = NULL;
-const char *cmd = NULL;
-const char *args = NULL;
+char *path = NULL;
+char *cmd = NULL;
+char *args = NULL;
+int listenfd, connfd;
 
 void Handler(int sig) {
+    sprintf(args, "%d", listenfd);
     pid_t fpid = fork();
     if (fpid < 0 ) {
         std::cout<< "error in fork..."<<std::endl;
@@ -39,35 +41,21 @@ void Handler(int sig) {
     }
 }
 
-void Child(int sockFd, int fd) {
-    char    buff[4096];
-    int     n;
+void Child(int sockFd) {
+    char buff[4096];
+    int n;
 
     n = recv(sockFd, buff, MAXLINE, 0);
     buff[n] = '\0';
 
+    std::ofstream out("/tmp/output");
     std::time_t result = std::time(0);
-    strcat(buff, std::asctime(std::localtime(&result)));
-    write(fd, buff, sizeof(buff));
-    //out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
+    out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
+    out.close();
 }
 
 int main(int argc, char const* argv[])
 {
-    path = argv[0];
-    cmd = argv[0];
-    args = argv[1];
-
-    int fd = 0;
-    if (argc == 1) {
-        fd = open("/tmp/output", O_RDWR | O_APPEND);
-    } else if (argc == 2) {
-        fd = atoi(argv[1]);
-    } else {
-        std::cout<<"error...";
-        exit(1);
-    }
-
     pid_t pid, sid;
 
     //fork the parent process
@@ -103,62 +91,88 @@ int main(int argc, char const* argv[])
     close(STDERR_FILENO);
 
     //main process
-    int listenfd, connfd;
-    struct sockaddr_in servaddr;
 
-    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
-        printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
-        exit(0);
-    }
 
-//    timeval timeout = {1, 0};
-//    if (setsockopt(listenfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeval)) < 0)
-//    {
-//        exit(1);
-//    }
-//
-    memset(&servaddr, 0, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    servaddr.sin_port = htons(6666);
+    path = const_cast<char *>(argv[0]);
+    cmd = const_cast<char *>(argv[0]);
+    args = argv[1];
 
-    if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
-        printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
-        exit(0);
-    }
+    if (argc == 1) {
+        struct sockaddr_in servaddr;
 
-    if(listen(listenfd, 10) == -1){
-        printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
-        exit(0);
-    }
-
-    struct sigaction action;
-    action.sa_handler = Handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-//    action.sa_flags |= SA_RESTART;
-
-    sigaction(SIGALRM, &action, NULL);
-
-//    alarm(3);
-
-    while(1){
-        if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-            if (errno == EINTR) {
-                std::cout<<strerror(errno)<<" : "<<errno;
-                break;
-            }
+        if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+            printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
+            exit(0);
         }
 
-        boost::thread thrd(boost::bind(&Child, connfd, fd));
-        thrd.join();
-        close(connfd);
+        //    timeval timeout = {1, 0};
+        //    if (setsockopt(listenfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeval)) < 0)
+        //    {
+        //        exit(1);
+        //    }
+        //
+        memset(&servaddr, 0, sizeof(servaddr));
+        servaddr.sin_family = AF_INET;
+        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+        servaddr.sin_port = htons(6666);
+
+        if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+            printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
+            exit(0);
+        }
+
+        if(listen(listenfd, 10) == -1){
+            printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
+            exit(0);
+        }
+
+        struct sigaction action;
+        action.sa_handler = Handler;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = 0;
+        //    action.sa_flags |= SA_RESTART;
+
+        sigaction(SIGALRM, &action, NULL);
+
+        //    alarm(3);
+
+        while(1){
+            if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+                if (errno == EINTR) {
+                    std::cout<<strerror(errno)<<" : "<<errno;
+                    break;
+                }
+            }
+
+            boost::thread thrd(boost::bind(&Child, listenfd));
+            thrd.join();
+            close(connfd);
+        }
+
+    } else if (argc == 2) {
+        while(1){
+            if((connfd = accept(atoi(args[1]), (struct sockaddr*)NULL, NULL)) == -1){
+                if (errno == EINTR) {
+                    std::cout<<strerror(errno)<<" : "<<errno;
+                    break;
+                }
+            }
+
+            boost::thread thrd(boost::bind(&Child, listenfd));
+            thrd.join();
+            close(connfd);
+        }
+
+    } else {
+        std::cout<<"error...";
+        exit(1);
     }
 
-    close(listenfd);
 
-	//close the log
-	closelog();
+    //   close(listenfd);
 
-	return 0;
+    //    close the log
+    //    closelog();
+
+    return 0;
 }
