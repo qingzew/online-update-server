@@ -48,7 +48,7 @@ void SendMsg(int sig)
    close(sockfd);
 }
 
-void GetTimer() {
+void SetTimer() {
     struct itimerval tick;
 
     signal(SIGALRM, SendMsg);
@@ -68,7 +68,7 @@ void GetTimer() {
 
 int main(int argc, char** argv)
 {
-    GetTimer();
+    SetTimer();
 
     while (1) {
         pause();

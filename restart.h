@@ -7,7 +7,6 @@
 #include <boost/bind.hpp>
 //extern char **environ;
 
-
 class CRestart {
     public:
         CRestart();
@@ -20,12 +19,10 @@ class CRestart {
         char *GetCmd();
         void SetArgs(char *argArgs);
         char *GetArgs();
-        void SetSignal();
 
+//        void SetSignal();
     private:
         void Handler(int sig);
-
-//        boost::function<void (int)> handlerFunc;
         char *path;
         char *cmd;
         char *args;

@@ -16,33 +16,57 @@
 #include <boost/thread.hpp>
 #include <boost/bind.hpp>
 
-#include "restart.h"
-
 #define MAXLINE 4096
 
-//void handler(int sig) {
-//    std::cout<<"hello"<<std::endl;
-//}
+const char *path = NULL;
+const char *cmd = NULL;
+const char *args = NULL;
 
-void Child(int sockFd) {
+void Handler(int sig) {
+    pid_t fpid = fork();
+    if (fpid < 0 ) {
+        std::cout<< "error in fork..."<<std::endl;
+        exit(1);
+    } else if (fpid == 0) {
+        if (args == NULL) {
+            execle(path, cmd, NULL, environ);
+        } else {
+            execle(path, cmd, args, NULL, environ);
+        }
+
+    } else {
+        std::cout<<"parent exit...";
+    }
+}
+
+void Child(int sockFd, int fd) {
     char    buff[4096];
     int     n;
 
     n = recv(sockFd, buff, MAXLINE, 0);
     buff[n] = '\0';
 
-    std::cout<<buff<<std::endl;
-
     std::time_t result = std::time(0);
-
-    std::ofstream out("/tmp/output", std::ios::app);
-    out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
-    out.close();
-
+    strcat(buff, std::asctime(std::localtime(&result)));
+    write(fd, buff, sizeof(buff));
+    //out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
 }
 
 int main(int argc, char const* argv[])
 {
+    path = argv[0];
+    cmd = argv[0];
+    args = argv[1];
+
+    int fd = 0;
+    if (argc == 1) {
+        fd = open("/tmp/output", O_RDWR | O_APPEND);
+    } else if (argc == 2) {
+        fd = atoi(argv[1]);
+    } else {
+        std::cout<<"error...";
+        exit(1);
+    }
 
     pid_t pid, sid;
 
@@ -79,10 +103,10 @@ int main(int argc, char const* argv[])
     close(STDERR_FILENO);
 
     //main process
-    int    listenfd, connfd;
-    struct sockaddr_in     servaddr;
+    int listenfd, connfd;
+    struct sockaddr_in servaddr;
 
-    if( (listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
         printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
         exit(0);
     }
@@ -98,27 +122,26 @@ int main(int argc, char const* argv[])
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     servaddr.sin_port = htons(6666);
 
-    if( bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+    if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
         printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
         exit(0);
     }
 
-    if( listen(listenfd, 10) == -1){
+    if(listen(listenfd, 10) == -1){
         printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
         exit(0);
     }
 
-//    struct sigaction action;
-//    action.sa_handler = handler;
-//    sigemptyset(&action.sa_mask);
-//    action.sa_flags = 0;
+    struct sigaction action;
+    action.sa_handler = Handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
 //    action.sa_flags |= SA_RESTART;
-//
-//    sigaction(SIGALRM, &action, NULL);
-//
+
+    sigaction(SIGALRM, &action, NULL);
+
 //    alarm(3);
 
-    printf("======waiting for client's request======\n");
     while(1){
         if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
             if (errno == EINTR) {
@@ -127,7 +150,7 @@ int main(int argc, char const* argv[])
             }
         }
 
-        boost::thread thrd(boost::bind(&Child, connfd));
+        boost::thread thrd(boost::bind(&Child, connfd, fd));
         thrd.join();
         close(connfd);
     }
