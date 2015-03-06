@@ -20,16 +20,18 @@
 
 char *path = NULL;
 char *cmd = NULL;
-char *args = NULL;
 
 int listenfd, connfd;
 
 void Handler(int sig) {
+    openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+
+    char args[1024];
     sprintf(args, "%d", listenfd);
     pid_t fpid = fork();
     if (fpid < 0 ) {
-        std::cout<< "error in fork..."<<std::endl;
-        exit(1);
+        syslog(LOG_ERR, "fork error: %s(errno: %d)\n", strerror(errno), errno);
+        exit(EXIT_FAILURE);
     } else if (fpid == 0) {
         if (args == NULL) {
             execle(path, cmd, NULL, environ);
@@ -38,8 +40,10 @@ void Handler(int sig) {
         }
 
     } else {
-        std::cout<<"parent exit...";
+        syslog(LOG_ERR, "parent exit...");
     }
+
+    closelog();
 }
 
 void Child(int sockFd) {
@@ -49,14 +53,74 @@ void Child(int sockFd) {
     n = recv(sockFd, buff, MAXLINE, 0);
     buff[n] = '\0';
 
-    std::ofstream out("/tmp/output");
+    std::ofstream out("/tmp/output", std::ios::app);
     std::time_t result = std::time(0);
     out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
     out.close();
 }
 
-int main(int argc, char const* argv[])
-{
+
+void SetSig() {
+    struct sigaction action;
+    action.sa_handler = Handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    //    action.sa_flags |= SA_RESTART;
+
+    sigaction(SIGALRM, &action, NULL);
+
+    //    alarm(3);
+}
+
+void NewConnect() {
+    openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+
+    struct sockaddr_in servaddr;
+
+    if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
+        syslog(LOG_ERR, "create socket error: %s(errno: %d)\n", strerror(errno), errno);
+        exit(EXIT_FAILURE);
+    }
+
+    //    timeval timeout = {1, 0};
+    //    if (setsockopt(listenfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeval)) < 0)
+    //    {
+    //        exit(1);
+    //    }
+    //
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port = htons(6666);
+
+    if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
+        syslog(LOG_ERR, "bind socket error: %s(errno: %d)\n", strerror(errno), errno);
+        exit(EXIT_SUCCESS);
+    }
+
+    if(listen(listenfd, 10) == -1){
+        syslog(LOG_ERR, "listen socket error: %s(errno: %d)\n", strerror(errno), errno);
+        exit(EXIT_FAILURE);
+    }
+
+
+    while(1){
+        if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+            if (errno == EINTR) {
+                syslog(LOG_ERR, "parent, accept error: %s(errno: %d)\n", strerror(errno), errno);
+                break;
+            }
+        }
+
+        boost::thread thrd(boost::bind(&Child, listenfd));
+        thrd.join();
+        close(connfd);
+    }
+
+    closelog();
+}
+
+void NewDaemon() {
     pid_t pid, sid;
 
     //fork the parent process
@@ -91,90 +155,58 @@ int main(int argc, char const* argv[])
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
 
-    //main process
 
+}
+
+
+void NewListen() {
+    openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+
+    while(1){
+        if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
+            if (errno == EINTR) {
+                syslog(LOG_ERR, "accept error: %s(errno: %d)\n", strerror(errno), errno);
+                break;
+            }
+        }
+
+        boost::thread thrd(boost::bind(&Child, listenfd));
+        thrd.join();
+        close(connfd);
+    }
+
+    closelog();
+}
+
+int main(int argc, char const* argv[])
+{
+    openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+
+    syslog(LOG_ERR, "arg num:  %d\n", argc);
+    //main process
 
     path = const_cast<char *>(argv[0]);
     cmd = const_cast<char *>(argv[0]);
 
-    struct sigaction action;
-    action.sa_handler = Handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    //    action.sa_flags |= SA_RESTART;
-
-    sigaction(SIGALRM, &action, NULL);
-
-    //    alarm(3);
 
     if (argc == 1) {
-        struct sockaddr_in servaddr;
-
-        if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1 ){
-            printf("create socket error: %s(errno: %d)\n",strerror(errno),errno);
-            exit(0);
-        }
-
-        //    timeval timeout = {1, 0};
-        //    if (setsockopt(listenfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeval)) < 0)
-        //    {
-        //        exit(1);
-        //    }
-        //
-        memset(&servaddr, 0, sizeof(servaddr));
-        servaddr.sin_family = AF_INET;
-        servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-        servaddr.sin_port = htons(6666);
-
-        if(bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) == -1){
-            printf("bind socket error: %s(errno: %d)\n",strerror(errno),errno);
-            exit(0);
-        }
-
-        if(listen(listenfd, 10) == -1){
-            printf("listen socket error: %s(errno: %d)\n",strerror(errno),errno);
-            exit(0);
-        }
-
-
-        while(1){
-            if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-                if (errno == EINTR) {
-                    std::cout<<strerror(errno)<<" : "<<errno;
-                    break;
-                }
-            }
-
-            boost::thread thrd(boost::bind(&Child, listenfd));
-            thrd.join();
-            close(connfd);
-        }
-
+//        NewDaemon();
+	SetSig();
+	NewConnect();
     } else if (argc == 2) {
         listenfd = atoi(argv[1]);
-        while(1){
-            if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
-                if (errno == EINTR) {
-                    std::cout<<strerror(errno)<<" : "<<errno;
-                    break;
-                }
-            }
-
-            boost::thread thrd(boost::bind(&Child, listenfd));
-            thrd.join();
-            close(connfd);
-        }
-
+	SetSig();
+        NewListen();
     } else {
-        std::cout<<"error...";
-        exit(1);
+        syslog(LOG_ERR, "args error..");
+        exit(EXIT_FAILURE);
     }
 
 
     //   close(listenfd);
 
     //    close the log
-    //    closelog();
+    closelog();
 
     return 0;
 }
