@@ -21,26 +21,28 @@
 char *path = NULL;
 char *cmd = NULL;
 
-int listenfd, connfd;
+int listenfd = -1, connfd = -1;
 
 void Handler(int sig) {
     openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+    syslog(LOG_INFO, "processing signal...");
 
     char args[1024];
     sprintf(args, "%d", listenfd);
+
     pid_t fpid = fork();
     if (fpid < 0 ) {
         syslog(LOG_ERR, "fork error: %s(errno: %d)\n", strerror(errno), errno);
         exit(EXIT_FAILURE);
     } else if (fpid == 0) {
-        if (args == NULL) {
+        if (args == "-1") {
             execle(path, cmd, NULL, environ);
         } else {
             execle(path, cmd, args, NULL, environ);
         }
 
     } else {
-        syslog(LOG_ERR, "parent exit...");
+        syslog(LOG_INFO, "parent exit...");
     }
 
     closelog();
@@ -61,14 +63,20 @@ void Child(int sockFd) {
 
 
 void SetSig() {
+    openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
+
     struct sigaction action;
     action.sa_handler = Handler;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
     //    action.sa_flags |= SA_RESTART;
 
-    sigaction(SIGALRM, &action, NULL);
-
+    if (sigaction(SIGALRM, &action, NULL) < 0) {
+        syslog(LOG_ERR, "set signal error: %s(errno: %d)\n", strerror(errno), errno);
+    } else {
+        syslog(LOG_ERR, "set signal ok");
+    }
+    closelog();
     //    alarm(3);
 }
 
@@ -146,9 +154,9 @@ void NewDaemon() {
 
     //change directory
     //if we can not find the directory we exit with failure
-    if ((chdir("/")) < 0) {
-        exit(EXIT_FAILURE);
-    }
+//    if ((chdir("/")) < 0) {
+//        exit(EXIT_FAILURE);
+//    }
 
     //close standard file description
     close(STDIN_FILENO);
@@ -190,13 +198,14 @@ int main(int argc, char const* argv[])
 
 
     if (argc == 1) {
-//        NewDaemon();
-	SetSig();
-	NewConnect();
+        NewDaemon();
+        SetSig();
+        NewConnect();
     } else if (argc == 2) {
         listenfd = atoi(argv[1]);
-	SetSig();
-        NewListen();
+        SetSig();
+//        NewListen();
+        while(1){}
     } else {
         syslog(LOG_ERR, "args error..");
         exit(EXIT_FAILURE);
