@@ -1,11 +1,13 @@
 # socket
 ##简介
 这是一个简单的在线更新程序，无需停止server的运行，即可更新serve代码。在更新过中保持socket的open，不断接受client的请求并缓存，
-待server重成功后统一处理。
+待server重启成功后统一处理。
 ##使用说明
 ###环境
 fedora
+
 boost
+
 g++
 ###server
 生成可执行文件并执行：
