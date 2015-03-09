@@ -53,4 +53,4 @@ kill -SIGALRM PID
 ```
 pid根据系统中server的进程ID替换
 ##帮助
-如程序运行发生任何问题，请使`journalctl`命令查看系日志
+如程序运行发生任何问题，请使`journalctl`命令查看系统日志
