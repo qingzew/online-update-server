@@ -31,19 +31,20 @@ void Handler(int sig) {
     sprintf(args, "%d", listenfd);
 
     pid_t fpid = fork();
-    if (fpid < 0 ) {
-        syslog(LOG_ERR, "fork error: %s(errno: %d)\n", strerror(errno), errno);
-        exit(EXIT_FAILURE);
-    } else if (fpid == 0) {
+
+    if (fpid == 0) {
         if (args == "-1") {
             execle(path, cmd, NULL, environ);
         } else {
             execle(path, cmd, args, NULL, environ);
         }
-
-    } else {
+    } else if (fpid > 0) {
         syslog(LOG_INFO, "parent exit...");
+    } else {
+        syslog(LOG_ERR, "fork error: %s(errno: %d)\n", strerror(errno), errno);
+        exit(EXIT_FAILURE);
     }
+
 
     closelog();
 }
@@ -52,12 +53,15 @@ void Child(int sockFd) {
     char buff[4096];
     int n;
 
-    n = recv(sockFd, buff, MAXLINE, 0);
+    if ((n = recv(sockFd, buff, MAXLINE, 0)) < 0) {
+        syslog(LOG_ERR, "recv error: %s(errno: %d)\n", strerror(errno), errno);
+    }
+
     buff[n] = '\0';
 
     std::ofstream out("/tmp/output", std::ios::app);
     std::time_t result = std::time(0);
-    out<<boost::this_thread::get_id()<<" "<<buff<<" "<<std::asctime(std::localtime(&result));
+    out<<boost::this_thread::get_id()<<"  / "<<buff<<" "<<std::asctime(std::localtime(&result));
     out.close();
 }
 
@@ -68,13 +72,13 @@ void SetSig() {
     struct sigaction action;
     action.sa_handler = Handler;
     sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
+    action.sa_flags = SA_NOMASK;
     //    action.sa_flags |= SA_RESTART;
 
     if (sigaction(SIGALRM, &action, NULL) < 0) {
         syslog(LOG_ERR, "set signal error: %s(errno: %d)\n", strerror(errno), errno);
     } else {
-        syslog(LOG_ERR, "set signal ok");
+        syslog(LOG_INFO, "set signal ok...");
     }
     closelog();
     //    alarm(3);
@@ -115,12 +119,12 @@ void NewConnect() {
     while(1){
         if((connfd = accept(listenfd, (struct sockaddr*)NULL, NULL)) == -1){
             if (errno == EINTR) {
-                syslog(LOG_ERR, "parent, accept error: %s(errno: %d)\n", strerror(errno), errno);
+                syslog(LOG_ERR, "accept error: %s(errno: %d)\n", strerror(errno), errno);
                 break;
             }
         }
 
-        boost::thread thrd(boost::bind(&Child, listenfd));
+        boost::thread thrd(boost::bind(&Child, connfd));
         thrd.join();
         close(connfd);
     }
@@ -178,7 +182,7 @@ void NewListen() {
             }
         }
 
-        boost::thread thrd(boost::bind(&Child, listenfd));
+        boost::thread thrd(boost::bind(&Child, connfd));
         thrd.join();
         close(connfd);
     }
@@ -189,9 +193,6 @@ void NewListen() {
 int main(int argc, char const* argv[])
 {
     openlog("myServer", LOG_CONS | LOG_PID, LOG_USER);
-
-    syslog(LOG_ERR, "arg num:  %d\n", argc);
-    //main process
 
     path = const_cast<char *>(argv[0]);
     cmd = const_cast<char *>(argv[0]);
@@ -204,13 +205,12 @@ int main(int argc, char const* argv[])
     } else if (argc == 2) {
         listenfd = atoi(argv[1]);
         SetSig();
-//        NewListen();
-        while(1){}
+        sleep(5);
+        NewListen();
     } else {
         syslog(LOG_ERR, "args error..");
         exit(EXIT_FAILURE);
     }
-
 
     //   close(listenfd);
 
